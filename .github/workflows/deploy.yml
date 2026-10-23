@@ -1,0 +1,71 @@
+
+name: Deploy to Azure Container Apps
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Descargar el código del repositorio
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Autenticarse en Azure
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      # 3. Autenticarse en Azure Container Registry
+      - name: Login to ACR
+        run: az acr login --name acrmiprojecto
+
+      # 4. Construir la imagen y subirla a ACR
+      - name: Build and push image
+        run: |
+          az acr build \
+            --registry acrmiprojecto \
+            --image ml-api:latest \
+            .
+
+      # 5. Desplegar o actualizar Azure Container Apps
+      - name: Deploy to Container Apps
+        env:
+          DATABRICKS_URL: ${{ secrets.DATABRICKS_URL }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: |
+          az containerapp show \
+            --name api-mi-proyecto \
+            --resource-group rg-mlops-ean \
+            >/dev/null 2>&1
+
+          if [ $? -eq 0 ]; then
+            az containerapp update \
+              --name api-mi-proyecto \
+              --resource-group rg-mlops-ean \
+              --image acrmiprojecto.azurecr.io/ml-api:latest \
+              --set-env-vars \
+                DATABRICKS_URL="$DATABRICKS_URL" \
+                DATABRICKS_TOKEN="$DATABRICKS_TOKEN"
+          else
+            az containerapp create \
+              --name api-mi-proyecto \
+              --resource-group rg-mlops-ean \
+              --environment env-mi-proyecto \
+              --image acrmiprojecto.azurecr.io/ml-api:latest \
+              --registry-server acrmiprojecto.azurecr.io \
+              --target-port 8000 \
+              --ingress external \
+              --min-replicas 1 \
+              --env-vars \
+                DATABRICKS_URL="$DATABRICKS_URL" \
+                DATABRICKS_TOKEN="$DATABRICKS_TOKEN"
+          fi
