@@ -101,10 +101,16 @@ def predecir(datos: DiabetesInput):
 
         return {"predictions": resultado["predictions"]}
 
-    except requests.RequestException:
+    except requests.RequestException as e:
+        detalle = str(e)
+        if e.response is not None:
+            detalle = (
+                f"Error HTTP {e.response.status_code}: "
+                f"{e.response.text[:500]}"
+            )
         raise HTTPException(
             status_code=502,
-            detail="No fue posible consultar el modelo de Databricks",
+            detail=f"Error al consultar Databricks: {detalle}",
         )
 
 
